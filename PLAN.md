@@ -30,7 +30,7 @@
   ТЗ: 6.3, 4.1, 14.2, 6.4 (fallback trimmed mean). Абстрактный `SerpProvider.fetch(query, geo, hl)` + три реализации: `SerperDevProvider` (основной, POST google.serper.dev/search, `X-API-KEY`, organic top-10; ключ `serper_api_key` из app_settings, БД → .env), `XmlstockProvider` (альтернатива, GET из `XMLSTOCK_API_URL`; недоступен без URL), `ManualProvider` (`serp_json_path` / `manual_sources`, логика без изменений). Выбор по настройке `serp_provider`; manual-режим включается автоматически при заданных ручных источниках. Кэш по хэшу (`...|provider`), парсинг readability-lxml, fallback усечённого среднего при N<5.
   **DoD:** тест на `fixtures/serp_bundle_example.json` через `serp_json_path`; юнит-тесты всех трёх провайдеров на моках (serper: разбор `organic`; xmlstock: разбор `items` + недоступность без URL; manual: json_path и manual_sources); тест выбора провайдера по `serp_provider` и авто-manual; тест `is_available()` — при пустом `serper_api_key`/`XMLSTOCK_API_URL` понятная ошибка конфигурации до сетевого вызова; юнит-тесты fallback для N=0/2/4/7; живые вызовы SERP-провайдеров в тестах запрещены.
 
-- [ ] **T-6. Шаги 2–5 — competitor, LSI, brief, outline (+ кэш агентов).**
+- [x] **T-6. Шаги 2–5 — competitor, LSI, brief, outline (+ кэш агентов).**
   ТЗ: 6.4–6.7, 7.3.2–7.3.4. Кэш с ключом из 6.2. brief_agent формирует `data_handling_rules` из `data_sensitivity` (логика в коде). Дедупликация content gaps (FR-18).
   **DoD:** пайплайн шагов 1–5 на MockLLM проходит end-to-end, выходы валидны схемами и совпадают по структуре с `reference_article/`.
 
