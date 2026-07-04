@@ -25,6 +25,9 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    # Сохраняем поведение ретраев подключения к брокеру на старте (Celery 6.0+
+    # иначе выдаёт CPendingDeprecationWarning).
+    broker_connection_retry_on_startup=True,
 )
 
 # `celery -A app.worker worker` ищет атрибут `app` или `celery` в модуле.

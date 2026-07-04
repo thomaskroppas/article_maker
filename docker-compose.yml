@@ -1,8 +1,11 @@
 # SEO Pipeline — dev-окружение (ТЗ 19.1).
-# Локально nginx не поднимается (profile production). Фронт :3000, API :8000.
+# Локально nginx не поднимается (profile production).
 #   docker compose up -d
-# Секреты берутся из .env (не коммитится). Инфраструктурные URL заданы явно
-# ниже и переопределяют возможные значения из .env внутри контейнеров.
+# Хостовые порты вынесены в env (неконфликтные дефолты): фронт :3010, API :8010,
+# postgres :5433, redis :6380 — переопределяются в .env. ВНУТРИ docker-сети сервисы
+# общаются по именам (postgres:5432, redis:6379) — хостовые порты на это не влияют.
+# Секреты берутся из .env (не коммитится). Инфраструктурные URL заданы явно ниже
+# и переопределяют возможные значения из .env внутри контейнеров.
 
 x-backend-env: &backend-env
   DATABASE_URL: postgresql://seo:seo@postgres:5432/seo_pipeline
@@ -18,7 +21,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U seo -d seo_pipeline"]
       interval: 5s
@@ -30,7 +33,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -44,7 +47,7 @@ services:
     environment:
       <<: *backend-env
     ports:
-      - "8000:8000"
+      - "${BACKEND_HOST_PORT:-8010}:8000"
     volumes:
       - ./prompts:/app/prompts:ro
       - ./fixtures:/app/fixtures:ro                 # dev/тесты: MockLLMClient + схемы
@@ -70,6 +73,14 @@ services:
       - ./reference_article:/app/reference_article:ro  # dev/тесты
       - ./data:/app/data
       - ./logs:/app/logs
+    # Переопределяем HEALTHCHECK из образа backend (curl :8000) — воркер не слушает
+    # HTTP. Проверяем живость celery-ноды через inspect ping (нужен брокер).
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +90,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_HOST_PORT:-3010}:3000"
     depends_on:
       - backend
 
