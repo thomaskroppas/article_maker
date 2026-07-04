@@ -1,15 +1,20 @@
-"""Celery-приложение (заглушка T-1).
+"""Celery-приложение: задача run_pipeline + восстановление осиротевших прогонов.
 
-Полная задача `run_pipeline` реализуется в T-7. Здесь — только инициализация
-Celery на Redis-брокере и health-задача `ping`, чтобы worker-сервис поднимался
-в docker-compose.
+Инициализация Celery на Redis-брокере, health-задача ping, run_pipeline (§5.3, §6)
+и хук worker_ready, который на старте воркера переводит зависшие прогоны в failed
+(доделка T-7 — обработка осиротевших пайплайнов).
 """
 
 from __future__ import annotations
 
+import logging
+
 from celery import Celery
+from celery.signals import worker_ready
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -38,6 +43,36 @@ app = celery_app
 def ping() -> str:
     """Health-задача worker'а."""
     return "pong"
+
+
+@worker_ready.connect
+def _recover_orphans_on_start(**_kwargs) -> None:
+    """При старте воркера перевести осиротевшие прогоны в failed (§6.8.1, T-7).
+
+    Задачи, погибшие при перезапуске/падении воркера, оставляют статьи в
+    нетерминальных статусах; здесь они закрываются, освобождая «активные» слоты.
+    Активные (по инспекции брокера) задачи не трогаются.
+    """
+    import redis as redis_lib
+
+    from .db.session import SessionLocal
+    from .orchestrator.recovery import get_active_article_ids, recover_orphaned_pipelines
+
+    cfg = get_settings()
+    active = get_active_article_ids(celery_app) or set()
+    try:
+        redis_client = redis_lib.Redis.from_url(cfg.redis_url, decode_responses=True)
+        recovered = recover_orphaned_pipelines(
+            SessionLocal, active, redis_client=redis_client
+        )
+        if recovered:
+            logger.warning(
+                "Восстановление: %d осиротевших прогонов → failed: %s",
+                len(recovered),
+                ", ".join(recovered),
+            )
+    except Exception as exc:  # noqa: BLE001 — не валим старт воркера из-за recovery
+        logger.error("Ошибка восстановления осиротевших прогонов: %s", exc)
 
 
 @celery_app.task(name="run_pipeline")

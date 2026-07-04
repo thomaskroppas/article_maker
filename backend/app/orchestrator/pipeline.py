@@ -80,7 +80,12 @@ class PipelineOrchestrator:
         )
         self.emitter.emit(
             EventType.STEP_FINISHED,
-            {"step_name": step_name, "duration_seconds": round(duration, 3), "success": True},
+            {
+                "step_name": step_name,
+                "step_number": step_number,
+                "duration_seconds": round(duration, 3),
+                "success": True,
+            },
         )
         if status_after:
             self.status.set_status(status_after)

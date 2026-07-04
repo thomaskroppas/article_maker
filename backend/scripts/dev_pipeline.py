@@ -11,6 +11,7 @@
     resume <id>            подтвердить ревью с ИЗМЕНЁННЫМ outline (меняет h1).
     stop <id>              послать stop-сигнал (увидите статус stopped_by_user).
     status <id>            показать статус статьи из БД.
+    recover                перевести осиротевшие (зависшие) прогоны в failed.
 """
 
 from __future__ import annotations
@@ -116,14 +117,17 @@ def cmd_events(args):
     r = _redis()
     key = events_list_key(args.article_id)
     seen = 0
-    while True:
-        raw = r.lrange(key, seen, -1)
-        for item in raw:
-            _print_event(json.loads(item))
-        seen += len(raw)
-        if not args.follow:
-            break
-        time.sleep(0.5)
+    try:
+        while True:
+            raw = r.lrange(key, seen, -1)
+            for item in raw:
+                _print_event(json.loads(item))
+            seen += len(raw)
+            if not args.follow:
+                break
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n(остановлено)")
 
 
 def cmd_resume(args):
@@ -148,6 +152,24 @@ def cmd_resume(args):
 def cmd_stop(args):
     PipelineControl(_redis(), args.article_id).request_stop()
     print(f"stop-сигнал отправлен для {args.article_id}")
+
+
+def cmd_recover(args):
+    from app.db.session import SessionLocal
+    from app.orchestrator.recovery import (
+        get_active_article_ids,
+        recover_orphaned_pipelines,
+    )
+    from app.worker import celery_app
+
+    active = get_active_article_ids(celery_app) or set()
+    recovered = recover_orphaned_pipelines(SessionLocal, active, redis_client=_redis())
+    if recovered:
+        print(f"Восстановлено (→ failed): {len(recovered)}")
+        for aid in recovered:
+            print(f"  {aid}")
+    else:
+        print("Осиротевших прогонов не найдено.")
 
 
 def cmd_status(args):
@@ -188,6 +210,9 @@ def main():
     ss = sub.add_parser("status", help="статус статьи")
     ss.add_argument("article_id")
     ss.set_defaults(func=cmd_status)
+
+    rc = sub.add_parser("recover", help="закрыть осиротевшие прогоны")
+    rc.set_defaults(func=cmd_recover)
 
     args = p.parse_args()
     args.func(args)

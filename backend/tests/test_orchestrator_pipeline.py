@@ -88,6 +88,9 @@ def test_run_pause_resume_with_edited_outline():
     types = [e["type"] for e in hist]
     assert types.count("step_started") == 5
     assert types.count("step_finished") == 5
+    # step_finished несёт step_number (фикс: раньше терялся)
+    finished = [e for e in hist if e["type"] == "step_finished"]
+    assert all(isinstance(e["data"].get("step_number"), int) for e in finished)
     assert "review_ready" in types
     assert "cost_update" in types
     # event_id монотонны и последовательны
