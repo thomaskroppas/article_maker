@@ -103,11 +103,15 @@ def run_pipeline(article_id: str) -> dict:
             return {"article_id": article_id, "error": "article not found"}
         ai = ArticleInput.model_validate(article.input_data)
 
+    import os
+
     redis_client = redis_lib.Redis.from_url(cfg.redis_url, decode_responses=True)
+    data_dir = os.environ.get("DATA_DIR", "data")
+    article_dir = os.path.join(data_dir, "articles", str(article_id))
     result = run_pipeline_sync(
         ai,
         redis_client=redis_client,
-        llm=MockLLMClient(),
+        llm=MockLLMClient(),  # живые вызовы — только в T-14
         serp_service=SerpService(),
         serp_config=SerpConfig(
             serp_provider=cfg.serp_provider,
@@ -117,5 +121,8 @@ def run_pipeline(article_id: str) -> dict:
         status=DBStatusManager(SessionLocal, article_id),
         agent_cache=AgentCache(),
         review_timeout_seconds=review_timeout_seconds(),
+        article_dir=article_dir,
+        # image_providers/fact_lookup — по умолчанию (картинки без ключей
+        # пропускаются; fact-check ходит в живую Wikipedia).
     )
     return {"article_id": article_id, "aborted": result.get("aborted")}

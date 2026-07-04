@@ -47,6 +47,8 @@ def _make_orch(ai, r, status, *, review_timeout=5.0, cost=None):
         serp_config=SerpConfig(),
         cost_tracker=cost,
         review_timeout_seconds=review_timeout,
+        fact_lookup_fn=lambda stmt, lang: None,  # офлайн (без Wikipedia)
+        url_alive=lambda u: True,
     )
 
 
@@ -86,13 +88,14 @@ def test_run_pause_resume_with_edited_outline():
 
     hist = EventEmitter(r, ai.article_id).history()
     types = [e["type"] for e in hist]
-    assert types.count("step_started") == 5
-    assert types.count("step_finished") == 5
-    # step_finished несёт step_number (фикс: раньше терялся)
+    # после resume пайплайн доходит до конца — все 13 шагов
+    assert types.count("step_started") == 13
+    assert types.count("step_finished") == 13
     finished = [e for e in hist if e["type"] == "step_finished"]
     assert all(isinstance(e["data"].get("step_number"), int) for e in finished)
     assert "review_ready" in types
     assert "cost_update" in types
+    assert "finished" in types
     # event_id монотонны и последовательны
     assert [e["event_id"] for e in hist] == list(range(1, len(hist) + 1))
 
@@ -115,10 +118,15 @@ def test_no_review_runs_straight_through():
     ai = _ai(review_outline=False)
     status = InMemoryStatusManager()
     result = _make_orch(ai, r, status).run()
-    assert "outline" in result
-    assert status.statuses[-1] == ArticleStatus.SECTIONS_IN_PROGRESS.value
+    assert "final_package" in result
+    assert status.statuses[-1] in (
+        ArticleStatus.COMPLETED.value,
+        ArticleStatus.READY_FOR_MANUAL_REVIEW_WITH_WARNINGS.value,
+        ArticleStatus.READY_FOR_MANUAL_REVIEW.value,
+    )
     types = [e["type"] for e in EventEmitter(r, ai.article_id).history()]
     assert "review_ready" not in types
+    assert "finished" in types
 
 
 def test_stop_signal_aborts():
@@ -141,4 +149,5 @@ def test_cost_tracked_across_steps():
     ct = CostTracker()
     _make_orch(ai, r, InMemoryStatusManager(), cost=ct).run()
     assert ct.article_cost > 0
-    assert len(ct.calls) == 4  # competitor, lsi, brief, outline (SERP из fixture)
+    # полный пайплайн: аналитика + секции (writer/critic на каждую) + qa/metadata/...
+    assert len(ct.calls) > 4

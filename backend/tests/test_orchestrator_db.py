@@ -88,11 +88,18 @@ def test_db_status_transitions_persisted():
             serp_service=SerpService(),
             serp_config=SerpConfig(),
             status=DBStatusManager(SessionLocal, ai.article_id),
+            fact_lookup_fn=lambda stmt, lang: None,  # офлайн
+            url_alive=lambda u: True,
         )
         with SessionLocal() as s:
             article = s.get(Article, aid)
-            assert article.status == ArticleStatus.SECTIONS_IN_PROGRESS.value
+            assert article.status in (
+                ArticleStatus.COMPLETED.value,
+                ArticleStatus.READY_FOR_MANUAL_REVIEW_WITH_WARNINGS.value,
+                ArticleStatus.READY_FOR_MANUAL_REVIEW.value,
+            )
             assert article.started_at is not None
+            assert article.finished_at is not None
             steps = (
                 s.query(PipelineStep).filter(PipelineStep.article_id == aid).count()
             )

@@ -46,7 +46,7 @@
   ТЗ: 3.13, 3.12, 7.3.9, 9 (fact-checking целиком), 20.5. Написать оба промпта по требованиям 20.2 (английский, Template, JSON-only), реализовать verification через Wikipedia/Wikidata с кэшем, проверку живости URL (HEAD, 5 сек).
   **DoD:** юнит-тесты: weaver не меняет текст вне ссылок (diff-проверка), ≤1 ссылка/секция; fact_checker извлекает 5–20 валидных FactStatement из `reference_article/article.md` (на моке); формат промптов проходит рендер T-4.
 
-- [ ] **T-10. Шаги 12–13 — QA и метаданные.**
+- [x] **T-10. Шаги 12–13 — QA и метаданные.**
   ТЗ: 6.15, 6.16, 6.2.1 (пороги), 8.2 (pysbd, стоп-слова ru). 6 кодовых метрик + 3 LLM-метрики, правило-предохранитель factuality (>20% mismatches → максимум pass_with_warnings), проверка weaved_sources кодом, разделение warnings, metadata_agent.
   **DoD:** QA-метрики на `reference_article/article.md` дают score в пределах ±5 от `reference_article/qa_result.json`; юнит-тесты порогов и предохранителя.
 

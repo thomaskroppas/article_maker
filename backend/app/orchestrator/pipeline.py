@@ -13,16 +13,33 @@ from typing import Callable, Optional
 from ..agents.brief import BriefAgent
 from ..agents.competitor import CompetitorAnalysisAgent
 from ..agents.content_gaps import filter_content_gaps
+from ..agents.faq_writer import run_faq_stage
 from ..agents.lsi import LSIAgent
+from ..agents.metadata import MetadataAgent
 from ..agents.outline import OutlineAgent
+from ..agents.sections_stage import run_sections_stage
+from ..agents.sources_weaver import weave_sources
 from ..constants import REVIEW_TIMEOUT_HOURS, TOTAL_STEPS
 from ..db.enums import ArticleStatus
+from ..factcheck.extraction import FactExtractionAgent
+from ..factcheck.verify import verify_statements
+from ..images.finder import run_image_stage
 from ..llm.cost import CostTracker
+from ..qa.final_qa import run_final_qa
 from ..schemas import Outline
 from .control import PipelineControl
 from .events import EventEmitter, EventType
 from .exceptions import PipelineStopped, ReviewTimeout
 from .status import InMemoryStatusManager, StatusManager
+
+
+def _terminal_status(qa_status: str) -> str:
+    """QA-статус → терминальный статус статьи (Приложение C)."""
+    return {
+        "pass": ArticleStatus.COMPLETED.value,
+        "pass_with_warnings": ArticleStatus.READY_FOR_MANUAL_REVIEW_WITH_WARNINGS.value,
+        "fail": ArticleStatus.READY_FOR_MANUAL_REVIEW.value,
+    }.get(qa_status, ArticleStatus.READY_FOR_MANUAL_REVIEW.value)
 
 
 class PipelineOrchestrator:
@@ -39,6 +56,14 @@ class PipelineOrchestrator:
         agent_cache=None,
         cost_tracker: Optional[CostTracker] = None,
         review_timeout_seconds: Optional[float] = None,
+        # шаги 8/10/11 — инъектируемые внешние зависимости (в тестах офлайн)
+        article_dir=None,
+        image_providers=None,
+        suggested_sources=None,
+        url_alive=None,
+        fact_lookup_fn=None,
+        wiki_cache=None,
+        author=None,
     ):
         self.ai = article_input
         self.emitter = emitter
@@ -54,6 +79,13 @@ class PipelineOrchestrator:
             if review_timeout_seconds is not None
             else REVIEW_TIMEOUT_HOURS * 3600
         )
+        self.article_dir = article_dir
+        self.image_providers = image_providers or []
+        self.suggested_sources = suggested_sources or []
+        self.url_alive = url_alive
+        self.fact_lookup_fn = fact_lookup_fn
+        self.wiki_cache = wiki_cache
+        self.author = author
 
     # --- один шаг: stop-check → step_started → работа → step_finished/status ---
     def _run_step(
@@ -140,11 +172,66 @@ class PipelineOrchestrator:
             if self.ai.review_outline:
                 outline = self._review_pause(report, outline)
 
-            # Вход в шаг 6 (секции реализуются в T-8+).
+            ai = self.ai
+            # Шаг 6 — секции (Writer→Critic→Editor) + Шаг 7 — сборка markdown.
             self.status.set_status(ArticleStatus.SECTIONS_IN_PROGRESS.value)
-            self.emitter.log(
-                "Оркестратор довёл пайплайн до конца реализованных шагов (1–5). "
-                "Шаги 6–13 будут добавлены в T-8+."
+            sections = self._run_step(
+                "sections", 6, None,
+                lambda: run_sections_stage(ai, brief, report, outline, self.llm, author=self.author),
+            )
+            for sid in sections.weak_sections:
+                self.emitter.log(f"Секция {sid} принята как слабая (не прошла критика)", "warning")
+            draft = self._run_step("markdown_assembly", 7, ArticleStatus.DRAFT_READY.value, lambda: sections.draft)
+            markdown = draft.content_markdown
+
+            # Шаг 8 — картинки (пропускаются без ключей/провайдеров).
+            markdown = self._run_step(
+                "images", 8, ArticleStatus.IMAGES_DONE.value,
+                lambda: self._images(markdown),
+            )
+
+            # Шаг 9 — FAQ.
+            markdown = self._run_step(
+                "faq", 9, None,
+                lambda: run_faq_stage(ai, brief, outline, markdown, self.llm, author=self.author),
+            )
+
+            # Шаг 10 — вплетение источников.
+            weave = self._run_step(
+                "sources_weaver", 10, ArticleStatus.SOURCES_DONE.value,
+                lambda: weave_sources(markdown, ai, self.suggested_sources, self.llm, url_alive=self.url_alive),
+            )
+            markdown = weave.markdown
+            for w in weave.warnings:
+                self.emitter.log(w, "warning")
+
+            # Шаг 11 — fact-checking.
+            fact_report = self._run_step(
+                "fact_check", 11, ArticleStatus.FACT_CHECK_DONE.value,
+                lambda: self._fact_check(markdown),
+            )
+
+            # Шаг 12 — финальный QA.
+            final_markdown = markdown
+            qa = self._run_step(
+                "final_qa", 12, ArticleStatus.QA_DONE.value,
+                lambda: run_final_qa(final_markdown, ai, brief, outline, report, fact_report, self.llm),
+            )
+
+            # Шаг 13 — метаданные.
+            final_draft = draft.model_copy(update={"content_markdown": final_markdown})
+            final_package = self._run_step(
+                "metadata", 13, None,
+                lambda: MetadataAgent(self.llm).run(ai, final_draft, qa),
+            )
+
+            self.status.set_status(_terminal_status(qa.status))
+            self.emitter.emit(
+                EventType.FINISHED,
+                {
+                    "qa_result": qa.model_dump(mode="json"),
+                    "final_package": final_package.model_dump(mode="json"),
+                },
             )
             return {
                 "serp_bundle": serp,
@@ -152,6 +239,9 @@ class PipelineOrchestrator:
                 "lsi_keywords": lsi,
                 "brief": brief,
                 "outline": outline,
+                "draft": final_draft,
+                "qa_result": qa,
+                "final_package": final_package,
             }
 
         except PipelineStopped:
@@ -166,6 +256,23 @@ class PipelineOrchestrator:
             self.status.set_status(ArticleStatus.FAILED.value)
             self.emitter.emit(EventType.ERROR, {"message": str(exc)})
             raise
+
+    def _images(self, markdown: str) -> str:
+        if not self.image_providers or not self.article_dir:
+            self.emitter.log("Шаг 8: картинки пропущены (нет провайдеров/каталога)")
+            return markdown
+        from ..images.keys import ImageKeysAgent
+
+        keys = ImageKeysAgent(self.llm).run(self.ai)
+        return run_image_stage(
+            markdown, self.ai, keys, self.image_providers, article_dir=self.article_dir
+        )
+
+    def _fact_check(self, markdown: str):
+        statements = FactExtractionAgent(self.llm).run(markdown, self.ai.language)
+        return verify_statements(
+            statements, self.ai.language, lookup_fn=self.fact_lookup_fn, cache=self.wiki_cache
+        )
 
     def _review_pause(self, report, outline: Outline) -> Outline:
         # FR-18: точки роста фильтруются от уже присутствующих в outline (§6.8).
@@ -206,8 +313,13 @@ def run_pipeline_sync(
     agent_cache=None,
     cost_tracker: Optional[CostTracker] = None,
     review_timeout_seconds: Optional[float] = None,
+    **extra,
 ) -> dict:
-    """Синхронный прогон пайплайна (для Celery-задачи и интеграционных тестов)."""
+    """Синхронный прогон пайплайна (для Celery-задачи и интеграционных тестов).
+
+    extra прокидывает опциональные зависимости шагов 8/10/11 (article_dir,
+    image_providers, suggested_sources, url_alive, fact_lookup_fn, wiki_cache, author).
+    """
     article_id = article_input.article_id
     orch = PipelineOrchestrator(
         article_input,
@@ -220,5 +332,6 @@ def run_pipeline_sync(
         agent_cache=agent_cache,
         cost_tracker=cost_tracker,
         review_timeout_seconds=review_timeout_seconds,
+        **extra,
     )
     return orch.run()
