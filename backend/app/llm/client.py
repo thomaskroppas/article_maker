@@ -141,6 +141,10 @@ def _default_mock_registry() -> dict[str, str]:
              "subject": "Байкал", "property": None, "value_in_article": "Сибирь"}
         ]}
     )
+    out["style_extractor_agent"] = json.dumps(
+        {"extracted_style": "экспертный, ясный", "extracted_tone": "нейтральный",
+         "extracted_age_image": "30-45"}
+    )
     out["final_qa_agent"] = json.dumps(
         {"brief_alignment": 82, "intent_coverage": 85, "factuality": 80,
          "recommendation": "Статья готова к ручной проверке."}

@@ -225,6 +225,7 @@ class PipelineOrchestrator:
                 lambda: MetadataAgent(self.llm).run(ai, final_draft, qa),
             )
 
+            self._persist_result(qa, final_package)
             self.status.set_status(_terminal_status(qa.status))
             self.emitter.emit(
                 EventType.FINISHED,
@@ -256,6 +257,24 @@ class PipelineOrchestrator:
             self.status.set_status(ArticleStatus.FAILED.value)
             self.emitter.emit(EventType.ERROR, {"message": str(exc)})
             raise
+
+    def _persist_result(self, qa, final_package) -> None:
+        """Сохранить артефакты на диск для GET /api/articles/{id}/result (§11.2.5)."""
+        if not self.article_dir:
+            return
+        import json
+        from pathlib import Path
+
+        d = Path(self.article_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "qa_result.json").write_text(
+            json.dumps(qa.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (d / "final_package.json").write_text(
+            json.dumps(final_package.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        (d / "article.md").write_text(final_package.article_markdown, encoding="utf-8")
 
     def _images(self, markdown: str) -> str:
         if not self.image_providers or not self.article_dir:

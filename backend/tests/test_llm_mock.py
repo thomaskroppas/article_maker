@@ -37,7 +37,7 @@ def test_mock_tracks_cost():
 def test_mock_unconfigured_agent_raises():
     mock = MockLLMClient()
     with pytest.raises(MockResponseNotConfigured):
-        mock.call("style_extractor_agent", "prompt")  # нет в дефолтном реестре
+        mock.call("archetype_picker_agent", "prompt")  # нет в дефолтном реестре
 
 
 def test_mock_custom_response_override():

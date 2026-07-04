@@ -50,7 +50,7 @@
   ТЗ: 6.15, 6.16, 6.2.1 (пороги), 8.2 (pysbd, стоп-слова ru). 6 кодовых метрик + 3 LLM-метрики, правило-предохранитель factuality (>20% mismatches → максимум pass_with_warnings), проверка weaved_sources кодом, разделение warnings, metadata_agent.
   **DoD:** QA-метрики на `reference_article/article.md` дают score в пределах ±5 от `reference_article/qa_result.json`; юнит-тесты порогов и предохранителя.
 
-- [ ] **T-11. REST API + basic auth + настройки.**
+- [x] **T-11. REST API + basic auth + настройки.**
   ТЗ: 11.1–11.2, 10.10 (app_settings). Все endpoints 11.2, включая `GET /api/pipeline/{id}/events`, DELETE статьи с удалением папки, settings с Fernet-шифрованием и приоритетом БД → .env.
   **DoD:** тесты на каждый endpoint; ключи не возвращаются в GET /api/settings; смена ключа применяется без рестарта (worker читает из БД на старте задачи).
 

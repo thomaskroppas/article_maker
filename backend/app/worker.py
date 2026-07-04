@@ -96,12 +96,19 @@ def run_pipeline(article_id: str) -> dict:
     from .schemas import ArticleInput
     from .serp.service import SerpConfig, SerpService
 
+    from .settings_service import SettingsService
+
     cfg = get_settings()
     with SessionLocal() as session:
         article = session.get(Article, uuid.UUID(str(article_id)))
         if article is None or not article.input_data:
             return {"article_id": article_id, "error": "article not found"}
         ai = ArticleInput.model_validate(article.input_data)
+        # Актуальные значения из БД → .env (смена ключа без рестарта, §10.10).
+        svc = SettingsService(session)
+        serp_provider = svc.get("serp_provider") or cfg.serp_provider
+        serper_api_key = svc.get("serper_api_key") or cfg.serper_api_key
+        xmlstock_api_url = svc.get("xmlstock_api_url") or cfg.xmlstock_api_url
 
     import os
 
@@ -114,9 +121,9 @@ def run_pipeline(article_id: str) -> dict:
         llm=MockLLMClient(),  # живые вызовы — только в T-14
         serp_service=SerpService(),
         serp_config=SerpConfig(
-            serp_provider=cfg.serp_provider,
-            serper_api_key=cfg.serper_api_key,
-            xmlstock_api_url=cfg.xmlstock_api_url,
+            serp_provider=serp_provider,
+            serper_api_key=serper_api_key,
+            xmlstock_api_url=xmlstock_api_url,
         ),
         status=DBStatusManager(SessionLocal, article_id),
         agent_cache=AgentCache(),
