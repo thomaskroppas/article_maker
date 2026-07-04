@@ -18,7 +18,7 @@
   ТЗ: раздел 13 целиком. Реализовать все схемы (ArticleInput с валидаторами, SerpBundle, CompetitorAnalysisReport + DataSensitivity, Brief, Outline, SectionFinal, CriticFeedback, QAResult, FactStatement, FinalPackage и остальные).
   **DoD:** каждый файл из `fixtures/` и все JSON из `reference_article/` парсятся соответствующей схемой без ошибок; тесты это доказывают.
 
-- [ ] **T-3. БД: модели, миграции, seed.**
+- [x] **T-3. БД: модели, миграции, seed.**
   ТЗ: раздел 12, Приложение C (статусы), 10.10 (app_settings). SQLAlchemy-модели всех таблиц, Alembic-миграция №1 (структура + `CREATE EXTENSION vector`), миграция №2 — seed из `seed/seed_niches_archetypes.py` (7 ниш, 30+ архетипов). Enum статусов статьи по Приложению C.
   **DoD:** `alembic upgrade head` с нуля проходит; в БД 7 ниш и все архетипы; `downgrade` работает.
 
