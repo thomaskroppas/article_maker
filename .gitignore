@@ -1,0 +1,29 @@
+# --- Секреты (никогда не коммитить) ---
+.env
+env_with_keys.txt
+
+# --- Зависимости ---
+node_modules/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Данные и артефакты рантайма ---
+data/
+logs/
+
+# --- Сборка фронтенда ---
+dist/
+.vite/
+
+# --- ОС / IDE ---
+.DS_Store
+.idea/
+.vscode/
