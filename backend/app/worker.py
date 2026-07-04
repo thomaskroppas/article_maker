@@ -52,6 +52,7 @@ def run_pipeline(article_id: str) -> dict:
     import redis as redis_lib
 
     from .agents.cache import AgentCache
+    from .constants import review_timeout_seconds
     from .db.models import Article
     from .db.session import SessionLocal
     from .llm import MockLLMClient
@@ -80,5 +81,6 @@ def run_pipeline(article_id: str) -> dict:
         ),
         status=DBStatusManager(SessionLocal, article_id),
         agent_cache=AgentCache(),
+        review_timeout_seconds=review_timeout_seconds(),
     )
     return {"article_id": article_id, "aborted": result.get("aborted")}

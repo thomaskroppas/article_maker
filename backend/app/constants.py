@@ -24,3 +24,18 @@ REVIEW_TIMEOUT_HOURS = _int("REVIEW_TIMEOUT_HOURS", 4)  # авто-отмена 
 FACT_CHECK_MAX_STATEMENTS = _int("FACT_CHECK_MAX_STATEMENTS", 20)
 
 TOTAL_STEPS = 13  # каноническая нумерация шагов (§6.1)
+
+
+def review_timeout_seconds() -> float:
+    """Таймаут паузы-ревью в секундах (читается при запуске задачи).
+
+    Приоритет: REVIEW_TIMEOUT_SECONDS (для быстрой проверки/тестов) →
+    REVIEW_TIMEOUT_HOURS * 3600 (боевой дефолт §6.2.1).
+    """
+    override = os.environ.get("REVIEW_TIMEOUT_SECONDS")
+    if override:
+        try:
+            return float(override)
+        except ValueError:
+            pass
+    return _int("REVIEW_TIMEOUT_HOURS", 4) * 3600
