@@ -200,7 +200,9 @@ def upgrade() -> None:
         sa.Column("updated_at", TS, nullable=False, server_default=NOW),
     )
 
-    # Аналитический материализованный view (ТЗ 12.2)
+    # Материализованный view для аналитики — прямое требование ТЗ §12.2
+    # («Материализованные view для аналитики»); питает экран Аналитика
+    # (FR-09 / §10.9, Этап 2). Обновляется по расписанию (celery beat, раз в час).
     op.execute(
         """
         CREATE MATERIALIZED VIEW mv_articles_by_site_month AS
