@@ -38,7 +38,7 @@
   ТЗ: 6.1, 6.8, 6.8.1, 11.3, Приложение C. Celery-задача `run_pipeline`, статусы в БД, события в Redis pub/sub **и** в list `pipeline:events:{id}` (event_id — монотонный счётчик), пауза `review_outline` с таймаутом REVIEW_TIMEOUT_HOURS, stop-сигнал.
   **DoD:** интеграционный тест: запуск → пауза → resume с изменённым outline → продолжение; таймаут ревью завершает задачу статусом `review_timeout`; события читаются из list.
 
-- [ ] **T-8. Шаги 6–9 — секции, сборка, картинки, FAQ.**
+- [x] **T-8. Шаги 6–9 — секции, сборка, картинки, FAQ.**
   ТЗ: 6.9–6.13, 7.3.5–7.3.7, раздел 8.2.5 (настройки картинок), FR-18 (дедуп FAQ). Цикл Writer→Critic→Editor (порог 60, флаг `enable_section_critic`), SUMMARY-маркеры, сборка markdown, image-агент (ключи + Pixabay/Unsplash с ротацией ключей при 429), FAQ с дедупликацией.
   **DoD:** на MockLLM собирается полный draft, структурно эквивалентный `reference_article/full_draft.json`; тест дедупа FAQ; тест ротации ключей картинок.
 
