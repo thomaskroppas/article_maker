@@ -26,7 +26,7 @@
   ТЗ: 7.1, 7.2, 20.2–20.4, 6.2. Загрузка `prompts/<agent>/v1.txt` через `string.Template` (внимание: риск 22.8 — `$` в текстах), AGENT_PARAMS (модель/температура per-agent из 7.2), ретраи 429/500, подсчёт стоимости по токенам, сохранение промпта и ответа на диск. MockLLMClient отдаёт fixtures по имени агента.
   **DoD:** тест: рендер промпта каждого из 13 агентов на фиктивных переменных не падает; мок возвращает валидные схемы; стоимость считается.
 
-- [ ] **T-5. Шаг 1 — SERP через интерфейс `SerpProvider`.**
+- [x] **T-5. Шаг 1 — SERP через интерфейс `SerpProvider`.**
   ТЗ: 6.3, 4.1, 14.2, 6.4 (fallback trimmed mean). Абстрактный `SerpProvider.fetch(query, geo, hl)` + три реализации: `SerperDevProvider` (основной, POST google.serper.dev/search, `X-API-KEY`, organic top-10; ключ `serper_api_key` из app_settings, БД → .env), `XmlstockProvider` (альтернатива, GET из `XMLSTOCK_API_URL`; недоступен без URL), `ManualProvider` (`serp_json_path` / `manual_sources`, логика без изменений). Выбор по настройке `serp_provider`; manual-режим включается автоматически при заданных ручных источниках. Кэш по хэшу (`...|provider`), парсинг readability-lxml, fallback усечённого среднего при N<5.
   **DoD:** тест на `fixtures/serp_bundle_example.json` через `serp_json_path`; юнит-тесты всех трёх провайдеров на моках (serper: разбор `organic`; xmlstock: разбор `items` + недоступность без URL; manual: json_path и manual_sources); тест выбора провайдера по `serp_provider` и авто-manual; тест `is_available()` — при пустом `serper_api_key`/`XMLSTOCK_API_URL` понятная ошибка конфигурации до сетевого вызова; юнит-тесты fallback для N=0/2/4/7; живые вызовы SERP-провайдеров в тестах запрещены.
 
