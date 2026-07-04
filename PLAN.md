@@ -7,8 +7,8 @@
 ## Этап 1 — ядро (русский язык)
 
 - [x] **T-0. Проверка окружения.**
-  ТЗ: разделы 4, 19. Проверить: Docker 24+, curl до XMLStock (команда в CLAUDE.md), наличие `env_with_keys.txt`. Скопировать его в `.env`, создать `.gitignore` (`.env`, `env_with_keys.txt`, `node_modules`, `__pycache__`, `data/`), `git init` + первый коммит.
-  **DoD:** XMLStock отвечает JSON'ом (или заказчику отправлен блокер); репозиторий инициализирован.
+  ТЗ: разделы 4, 19. Проверить: Docker 24+, тестовый запрос к SERP-провайдеру (serper.dev — основной; команда в CLAUDE.md, 1 кредит, один раз), наличие `env_with_keys.txt`. Скопировать его в `.env`, создать `.gitignore` (`.env`, `env_with_keys.txt`, `node_modules`, `__pycache__`, `data/`), `git init` + первый коммит.
+  **DoD:** SERP-провайдер (serper.dev) отвечает JSON'ом (или заказчику отправлен блокер); репозиторий инициализирован.
 
 - [ ] **T-1. Каркас и Docker Compose.**
   ТЗ: 4, 5, 19. Создать `backend/` (FastAPI, `/api/health`), `frontend/` (Vite + React, пустая оболочка с тёмной темой), `docker-compose.yml` (postgres `pgvector/pgvector:pg15`, redis:7, backend, worker-заглушка Celery, frontend; nginx под profile `production`), `env.example` без секретов.
@@ -26,9 +26,9 @@
   ТЗ: 7.1, 7.2, 20.2–20.4, 6.2. Загрузка `prompts/<agent>/v1.txt` через `string.Template` (внимание: риск 22.8 — `$` в текстах), AGENT_PARAMS (модель/температура per-agent из 7.2), ретраи 429/500, подсчёт стоимости по токенам, сохранение промпта и ответа на диск. MockLLMClient отдаёт fixtures по имени агента.
   **DoD:** тест: рендер промпта каждого из 13 агентов на фиктивных переменных не падает; мок возвращает валидные схемы; стоимость считается.
 
-- [ ] **T-5. Шаг 1 — SERP.**
-  ТЗ: 6.3, 6.4 (fallback trimmed mean). Кэш по хэшу, XMLStock-клиент, парсинг readability-lxml, альтернативные источники (`serp_json_path`, `manual_sources`), fallback усечённого среднего при N<5.
-  **DoD:** тест на `fixtures/serp_bundle_example.json` через `serp_json_path`; юнит-тесты fallback для N=0/2/4/7; живой XMLStock в тестах не вызывается.
+- [ ] **T-5. Шаг 1 — SERP через интерфейс `SerpProvider`.**
+  ТЗ: 6.3, 4.1, 14.2, 6.4 (fallback trimmed mean). Абстрактный `SerpProvider.fetch(query, geo, hl)` + три реализации: `SerperDevProvider` (основной, POST google.serper.dev/search, `X-API-KEY`, organic top-10; ключ `serper_api_key` из app_settings, БД → .env), `XmlstockProvider` (альтернатива, GET из `XMLSTOCK_API_URL`; недоступен без URL), `ManualProvider` (`serp_json_path` / `manual_sources`, логика без изменений). Выбор по настройке `serp_provider`; manual-режим включается автоматически при заданных ручных источниках. Кэш по хэшу (`...|provider`), парсинг readability-lxml, fallback усечённого среднего при N<5.
+  **DoD:** тест на `fixtures/serp_bundle_example.json` через `serp_json_path`; юнит-тесты всех трёх провайдеров на моках (serper: разбор `organic`; xmlstock: разбор `items` + недоступность без URL; manual: json_path и manual_sources); тест выбора провайдера по `serp_provider` и авто-manual; юнит-тесты fallback для N=0/2/4/7; живые вызовы SERP-провайдеров в тестах запрещены.
 
 - [ ] **T-6. Шаги 2–5 — competitor, LSI, brief, outline (+ кэш агентов).**
   ТЗ: 6.4–6.7, 7.3.2–7.3.4. Кэш с ключом из 6.2. brief_agent формирует `data_handling_rules` из `data_sensitivity` (логика в коде). Дедупликация content gaps (FR-18).

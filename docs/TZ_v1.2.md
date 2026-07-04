@@ -373,6 +373,8 @@ QA-метрика `length_control` считается от **суммы target_w
 | HTML parsing | BeautifulSoup4 + lxml + readability-lxml | latest |
 | Sentence splitting | pysbd | latest |
 | Embeddings (Стратегия C) | sentence-transformers | latest |
+| HTTP client | requests или httpx | latest |
+| SERP-провайдер (шаг 1) | serper.dev (основной) / XMLStock (альт.) за интерфейсом `SerpProvider` | — |
 
 ### 4.2. Frontend
 
@@ -401,7 +403,9 @@ QA-метрика `length_control` считается от **суммы target_w
 ### 4.4. Внешние API (обязательные)
 
 - **Anthropic Claude API** — SDK `anthropic`.
-- **XMLStock SERP** — self-hosted парсер на HTTP.
+- **SERP-провайдер** (шаг 1, за интерфейсом `SerpProvider`):
+  - **serper.dev** — основной. REST API, `POST https://google.serper.dev/search`, ключ `SERPER_API_KEY`. Тарификация кредитами (бесплатный аккаунт ограничен) → SERP-кэш обязателен.
+  - **XMLStock SERP** — альтернатива. Любой xmlstock-совместимый эндпоинт из `XMLSTOCK_API_URL` (self-hosted, HTTP).
 - **Pixabay** — REST API.
 - **Unsplash** — REST API.
 - **Wikimedia Commons** — REST API (без ключа).
@@ -443,7 +447,7 @@ QA-метрика `length_control` считается от **суммы target_w
                      
 [Celery worker] (executes pipelines)
      ├─→ [Anthropic API]
-     ├─→ [XMLStock SERP]
+     ├─→ [SERP-провайдер: serper.dev / XMLStock]
      ├─→ [Pixabay/Unsplash/Wikimedia]
      ├─→ [Wikipedia/Wikidata]
      ├─→ [PostgreSQL]
@@ -563,23 +567,50 @@ FACT_CHECK_MAX_STATEMENTS = 20
 
 **Задача:** получить топ-10 URLs по main_keyword в Google + распарсенное содержимое.
 
+**Архитектура: интерфейс SerpProvider.**
+Получение выдачи изолировано за абстрактным интерфейсом `SerpProvider` — источник SERP сменяем без изменений остального пайплайна. Скачивание страниц по URL, парсинг readability-lxml и схема `SerpBundle` от выбора провайдера **не зависят**.
+
+```python
+class SerpProvider(ABC):
+    name: str  # "serper" | "xmlstock" | "manual"
+
+    def is_available(self) -> bool:
+        """Провайдер сконфигурирован и может обслуживать запросы (есть ключ/URL)."""
+
+    @abstractmethod
+    def fetch(self, query: str, geo: str, hl: str) -> list[dict]:
+        """Вернуть сырой топ-10 органической выдачи: список объектов
+        {url, title, description}. Скачивание и readability — выше по потоку."""
+```
+
+Три реализации:
+
+1. **`SerperDevProvider` (основной).** API [serper.dev](https://serper.dev). Запрос: `POST https://google.serper.dev/search`, заголовок `X-API-KEY: {serper_api_key}`, тело JSON `{"q": query, "gl": geo, "hl": hl}`. Из ответа берётся массив `organic`, первые 10 элементов → `{url, title, description=snippet}`. Ключ — настройка `serper_api_key` (`app_settings`, приоритет БД → `.env`/`SERPER_API_KEY`). `is_available()` = ключ задан.
+   **Важно (лимиты кредитов):** бесплатный аккаунт serper.dev тарифицируется кредитами — каждый запрос списывает кредит. Поэтому SERP-кэш **обязателен** (см. ниже), а в автотестах живые вызовы serper.dev **запрещены** — только моки и кэш/`serp_json_path`.
+2. **`XmlstockProvider` (альтернатива).** Любой xmlstock-совместимый эндпоинт из `XMLSTOCK_API_URL`. Запрос: `HTTP GET {URL}?q={query}&geo={geo}&hl={hl}`, ответ — список `{url, title, description}`, берётся топ-10. `is_available()` = `XMLSTOCK_API_URL` непустой; если URL не задан — провайдер недоступен.
+3. **`ManualProvider` (fallback).** Инкапсулирует существующие ручные источники (`serp_json_path`, `manual_sources`) — логика без изменений (см. «Альтернативные источники» ниже).
+
+**Выбор провайдера:**
+- Настройка `serp_provider` (`serper` | `xmlstock`) в `app_settings` и на странице Настройки (по умолчанию `serper`) определяет активный сетевой провайдер.
+- **Manual-режим включается автоматически**, когда в запросе на генерацию задан `serp_json_path` или `manual_sources` — тогда сетевой провайдер не вызывается независимо от `serp_provider` (как было и раньше).
+
 **Логика:**
-1. Проверить SERP-кэш (`data/serp_cache/<hash>.json`, где hash = sha256(`main_keyword|geo|language`)).
-2. Если есть и `force_refresh_serp=False` — использовать.
-3. Иначе:
-   - HTTP GET на XMLStock: `{URL}?q={main_keyword}&geo={geo}&hl={language}`.
-   - Ответ содержит список объектов `{url, title, description}`.
+1. Если задан `serp_json_path` / `manual_sources` → используется `ManualProvider` (кэш и сеть не трогаются, см. ниже).
+2. Иначе выбирается провайдер по `serp_provider`. Проверить SERP-кэш (`data/serp_cache/<hash>.json`, где hash = sha256(`main_keyword|geo|language|provider`)).
+3. Если кэш есть и `force_refresh_serp=False` — использовать.
+4. Иначе:
+   - `provider.fetch(main_keyword, geo, language)` → сырой топ-10 `{url, title, description}`.
    - Для каждого URL: HTTP GET, парсинг через readability-lxml для извлечения main content.
    - Сохранить в кэш.
-4. Отдать `SerpBundle`.
+5. Отдать `SerpBundle`.
 
 **Альтернативные источники SERP (взаимоисключающие, приоритет сверху вниз):**
 
-1. `serp_json_path` задан → загрузить готовый `SerpBundle` из указанного JSON-файла (валидация Pydantic-схемой). XMLStock не вызывается, кэш не используется. Назначение: повторные прогоны и тесты на фиксированной выдаче.
-2. `manual_sources` задан (список URL) → XMLStock не вызывается. Каждый URL скачивается и парсится через readability-lxml так же, как в основном потоке; из результатов собирается `SerpBundle` (`query = main_keyword`). Назначение: пользователь сам знает эталонных конкурентов.
-3. Иначе — стандартный поток (кэш → XMLStock).
+1. `serp_json_path` задан → загрузить готовый `SerpBundle` из указанного JSON-файла (валидация Pydantic-схемой). Сетевой провайдер не вызывается, кэш не используется. Назначение: повторные прогоны и тесты на фиксированной выдаче.
+2. `manual_sources` задан (список URL) → сетевой провайдер не вызывается. Каждый URL скачивается и парсится через readability-lxml так же, как в основном потоке; из результатов собирается `SerpBundle` (`query = main_keyword`). Назначение: пользователь сам знает эталонных конкурентов.
+3. Иначе — стандартный поток (кэш → активный провайдер `serp_provider`).
 
-В UI эти параметры не выводятся в форму первого релиза — доступны только через API (используются для тестов и приёмки).
+В UI параметры `serp_json_path` / `manual_sources` не выводятся в форму первого релиза — доступны только через API (используются для тестов и приёмки).
 
 **Схема SerpBundle:**
 ```python
@@ -601,7 +632,7 @@ class SerpBundle(BaseModel):
     fetched_at: datetime
 ```
 
-**Ошибки:** если XMLStock недоступен и нет кэша — пайплайн падает с ошибкой "SERP недоступен, попробуйте позже".
+**Ошибки:** если активный провайдер недоступен (нет ключа/URL, лимит кредитов, сетевая ошибка) и нет кэша — пайплайн падает с ошибкой "SERP недоступен, попробуйте позже". Смена провайдера выполняется через настройку `serp_provider` без изменения кода.
 
 ### 6.4. Шаг 2: Анализ конкурентов
 
@@ -1525,7 +1556,8 @@ TTL — 30 дней (факты меняются редко).
 
 ### 10.10. Экран "Настройки" (/settings)
 
-- **API-ключи** (Anthropic, Pixabay, Unsplash, XMLStock URL): поля ввода. Существующие значения не показываются — только индикатор «задан / не задан» и число ключей для мультиключевых провайдеров. Ввод нового значения перезаписывает старое.
+- **API-ключи** (Anthropic, Pixabay, Unsplash, `serper_api_key`, XMLStock URL): поля ввода. Существующие значения не показываются — только индикатор «задан / не задан» и число ключей для мультиключевых провайдеров. Ввод нового значения перезаписывает старое.
+- **SERP-провайдер:** селектор `serp_provider` (`serper` | `xmlstock`, по умолчанию `serper`) — выбор активного источника выдачи для шага 1.
 - **WordPress:** настраивается per-site на экране «Сайты» (URL, user, application password).
 - **Управление кэшем:** кнопки очистки (SERP / agent / image_keys / translation / wiki).
 - **Информация о версии.**
@@ -1534,7 +1566,7 @@ TTL — 30 дней (факты меняются редко).
 
 ```sql
 CREATE TABLE app_settings (
-    key         TEXT PRIMARY KEY,      -- 'anthropic_api_key', 'pixabay_api_keys', ...
+    key         TEXT PRIMARY KEY,      -- 'anthropic_api_key', 'pixabay_api_keys', 'serper_api_key', 'serp_provider', ...
     value       TEXT NOT NULL,         -- зашифровано Fernet (ключ SETTINGS_ENCRYPTION_KEY из .env)
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1550,7 +1582,8 @@ CREATE TABLE app_settings (
 
 ```
 GET /api/settings   → {anthropic_key_set: bool, pixabay_keys_count: int,
-                       unsplash_keys_count: int, xmlstock_url: str, ...}
+                       unsplash_keys_count: int, serper_key_set: bool,
+                       serp_provider: "serper"|"xmlstock", xmlstock_url: str, ...}
                        (сами ключи НЕ возвращаются, только статус «задан/не задан»)
 PUT /api/settings   → 204  (тело: {key_name: value, ...})
 ```
@@ -1669,6 +1702,19 @@ DELETE /api/cache/wiki                   → 204
 POST /api/wordpress/publish              → {post_id, url}  (тело: {article_id, status: 'draft' | 'publish'})
 GET  /api/wordpress/status                → {connected: bool, url}
 ```
+
+#### 11.2.10. Settings
+
+```
+GET /api/settings   → {anthropic_key_set: bool, pixabay_keys_count: int,
+                       unsplash_keys_count: int, serper_key_set: bool,
+                       serp_provider: "serper"|"xmlstock", xmlstock_url: str, ...}
+                       (сами ключи НЕ возвращаются, только статус «задан/не задан»)
+PUT /api/settings   → 204  (тело: {key_name: value, ...};
+                       допустимые ключи включают serper_api_key, serp_provider)
+```
+
+Детали хранения и приоритета БД → `.env` — см. 10.10.
 
 ### 11.3. WebSocket protocol
 
@@ -2233,13 +2279,26 @@ class FinalPackage(BaseModel):
 - **Retry:** exponential backoff при 429/500 (см. `retry_service`).
 - **Стоимость:** одна статья — $0.05-0.15.
 
-### 14.2. XMLStock SERP API
+### 14.2. SERP-провайдеры (шаг 1, интерфейс `SerpProvider`)
 
-- **URL:** self-hosted (`http://95.217.108.20:8085/api/v1/parsers/xmlstock/serp`).
+Активный провайдер выбирается настройкой `serp_provider` (`serper` | `xmlstock`, по умолчанию `serper`). Общий контракт: `fetch(query, geo, hl)` → сырой топ-10 `{url, title, description}`; далее для каждого URL — HTTP GET и парсинг через readability-lxml (одинаково для всех провайдеров).
+
+**14.2.a. serper.dev (основной).**
+- **URL:** `https://google.serper.dev/search`.
+- **Метод:** POST.
+- **Auth:** заголовок `X-API-KEY: {serper_api_key}` (настройка `serper_api_key`, БД → `.env`/`SERPER_API_KEY`).
+- **Тело:** JSON `{"q": main_keyword, "gl": geo, "hl": language}`.
+- **Ответ:** JSON с массивом `organic` → берётся первые 10 элементов (`{url, title, description=snippet}`).
+- **Лимиты:** бесплатный аккаунт тарифицируется кредитами (каждый запрос — 1 кредит). SERP-кэш обязателен; в тестах живые вызовы запрещены.
+
+**14.2.b. XMLStock (альтернатива).**
+- **URL:** любой xmlstock-совместимый эндпоинт из `XMLSTOCK_API_URL` (self-hosted, напр. `http://95.217.108.20:8085/api/v1/parsers/xmlstock/serp`).
 - **Метод:** GET.
 - **Query params:** `q` (main_keyword), `geo`, `hl` (language).
 - **Ответ:** JSON `{items: [{url, title, description}, ...]}`.
-- **Далее:** для каждого URL — HTTP GET, парсинг через readability-lxml.
+- **Доступность:** если `XMLSTOCK_API_URL` не задан — провайдер недоступен.
+
+**14.2.c. Manual (fallback).** `serp_json_path` / `manual_sources` — без сетевого вызова (см. 6.3).
 
 ### 14.3. Pixabay API
 
@@ -2401,7 +2460,7 @@ CSV с колонками:
 
 | Кэш | Место | Ключ | TTL |
 |---|---|---|---|
-| SERP | `data/serp_cache/<hash>.json` | main_keyword+geo+language | 7 дней |
+| SERP | `data/serp_cache/<hash>.json` | main_keyword+geo+language+provider | 7 дней |
 | Agent | `data/agent_cache/<agent>/<hash>.json` | agent+title+keyword+secondary | без TTL |
 | Image keys | `data/image_keys_cache.json` | main_keyword | без TTL |
 | Translation | `data/translation_cache.json` | text+src+dst | без TTL |
@@ -2509,6 +2568,7 @@ services:
       - DATABASE_URL=postgresql://user:pass@postgres:5432/seo
       - REDIS_URL=redis://redis:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SERPER_API_KEY=${SERPER_API_KEY}
       - XMLSTOCK_API_URL=${XMLSTOCK_API_URL}
       - PIXABAY_API_KEYS=${PIXABAY_API_KEYS}
       - UNSPLASH_ACCESS_KEYS=${UNSPLASH_ACCESS_KEYS}
@@ -2880,6 +2940,16 @@ LSI keywords: $lsi_keywords
 - API-ключи внешних сервисов хранятся в БД (таблица `app_settings`, см. 10.10) и меняются через UI без рестарта.
 - Инфраструктурные секреты — в .env файле (не в docker-compose).
 - Для production — использовать Docker secrets.
+
+### 22.16. SERP-провайдер: лимиты и доступность
+
+**Риск:** источник SERP может стать недоступен или упереться в лимит — у serper.dev это исчерпание кредитов бесплатного аккаунта или сбой API; у xmlstock-эндпоинта — недоступность self-hosted сервиса. Жёсткая привязка к одному источнику остановила бы шаг 1.
+
+**Стратегия:**
+- Шаг 1 изолирован за интерфейсом `SerpProvider` (см. 6.3, 14.2) — источник сменяем настройкой `serp_provider` (`serper` | `xmlstock`) без изменения кода.
+- **serper.dev — основной**, xmlstock — альтернатива; при исчерпании кредитов/сбое переключение выполняется через настройку.
+- SERP-кэш обязателен (экономит кредиты, снижает частоту внешних вызовов); `force_refresh_serp` обходит кэш осознанно.
+- Manual-режим (`serp_json_path` / `manual_sources`) даёт полностью офлайновый fallback для тестов, приёмки и повторных прогонов.
 
 ---
 
