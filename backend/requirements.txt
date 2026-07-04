@@ -38,3 +38,4 @@ cryptography==44.0.0
 # --- Tests ---
 pytest==8.3.4
 pytest-cov==6.0.0
+fakeredis==2.26.1
