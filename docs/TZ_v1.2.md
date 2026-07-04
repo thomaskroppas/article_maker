@@ -599,6 +599,7 @@ class SerpProvider(ABC):
 2. Иначе выбирается провайдер по `serp_provider`. Проверить SERP-кэш (`data/serp_cache/<hash>.json`, где hash = sha256(`main_keyword|geo|language|provider`)).
 3. Если кэш есть и `force_refresh_serp=False` — использовать.
 4. Иначе:
+   - **Проверить `provider.is_available()`.** Если провайдер не сконфигурирован — пайплайн падает **до** сетевого вызова с понятной ошибкой: `«SERP-провайдер {name} недоступен: не задан serper_api_key»` (для serper) либо `«…: не задан XMLSTOCK_API_URL»` (для xmlstock). Это отделяет ошибку конфигурации от сетевого сбоя.
    - `provider.fetch(main_keyword, geo, language)` → сырой топ-10 `{url, title, description}`.
    - Для каждого URL: HTTP GET, парсинг через readability-lxml для извлечения main content.
    - Сохранить в кэш.
