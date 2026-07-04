@@ -14,7 +14,7 @@
   ТЗ: 4, 5, 19. Создать `backend/` (FastAPI, `/api/health`), `frontend/` (Vite + React, пустая оболочка с тёмной темой), `docker-compose.yml` (postgres `pgvector/pgvector:pg15`, redis:7, backend, worker-заглушка Celery, frontend; nginx под profile `production`), `env.example` без секретов.
   **DoD:** `docker compose up -d` поднимает всё; `GET /api/health` → 200; фронт открывается на :3000.
 
-- [ ] **T-2. Pydantic-схемы + тесты на fixtures.**
+- [x] **T-2. Pydantic-схемы + тесты на fixtures.**
   ТЗ: раздел 13 целиком. Реализовать все схемы (ArticleInput с валидаторами, SerpBundle, CompetitorAnalysisReport + DataSensitivity, Brief, Outline, SectionFinal, CriticFeedback, QAResult, FactStatement, FinalPackage и остальные).
   **DoD:** каждый файл из `fixtures/` и все JSON из `reference_article/` парсятся соответствующей схемой без ошибок; тесты это доказывают.
 

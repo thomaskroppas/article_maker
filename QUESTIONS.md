@@ -60,3 +60,25 @@ HTTPS CONNECT tunnels`.
 **Действие:** полный `docker compose up -d` с проверкой :3000/:8000 выполняется
 на хосте с Docker-демоном (машина заказчика / приёмка T-14). Ожидание — поднимется
 штатно; конфиг и оба образа-приложения к этому готовы.
+
+## T-2. Pydantic-схемы
+
+### [РЕШЕНО] Расхождение реальных файлов (desktop-формат) с ТЗ §13
+
+Реальные файлы `fixtures/` и `reference_article/` сохранены desktop-версией и
+расходятся с ТЗ §13 (breaking: `qa_result.warnings` список vs `QAWarnings`;
+`article_input.required_elements` содержит `sources_block`; `sections/*_draft|review`
+— desktop-формат; lossy: `avg` vs `avg_trimmed`, ключи `data_sensitivity`).
+
+**Решение заказчика — вариант 1 (нормализация на входе) с уточнениями:**
+- (a) весь маппинг legacy → §13 собран в одном модуле
+  `backend/app/schemas/legacy_compat.py`; валидаторы совместимости помечены
+  `# legacy desktop-format compatibility` (не размазаны по схемам);
+- (b) таблица соответствий — `docs/LEGACY_FORMAT.md`;
+- (c) выходной контракт пайплайна строго §13 — обязательный тест
+  `backend/tests/test_output_contract.py` (новая генерация не пишет legacy-поля).
+
+Модели §13 объявлены строго по ТЗ (поля/типы не менялись). SerpBundle/LSI/
+ReviewData вне §13 — следуют реальным файлам.
+
+**Статус:** закрыто, реализовано в T-2.
