@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .api import analytics, articles, cache, catalog, pipeline, settings_router, sites
+from .api import websocket as ws_module
 from .config import get_settings
 
 settings = get_settings()
@@ -45,5 +46,6 @@ for _router in (
     catalog.router,
     analytics.router,
     cache.router,
+    ws_module.router,
 ):
     app.include_router(_router)
