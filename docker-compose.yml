@@ -1,0 +1,97 @@
+# SEO Pipeline — dev-окружение (ТЗ 19.1).
+# Локально nginx не поднимается (profile production). Фронт :3000, API :8000.
+#   docker compose up -d
+# Секреты берутся из .env (не коммитится). Инфраструктурные URL заданы явно
+# ниже и переопределяют возможные значения из .env внутри контейнеров.
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://seo:seo@postgres:5432/seo_pipeline
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: seo
+      POSTGRES_PASSWORD: seo
+      POSTGRES_DB: seo_pipeline
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seo -d seo_pipeline"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      <<: *backend-env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.25
+    profiles: ["production"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  redis_data:

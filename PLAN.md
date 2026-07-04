@@ -10,7 +10,7 @@
   ТЗ: разделы 4, 19. Проверить: Docker 24+, тестовый запрос к SERP-провайдеру (serper.dev — основной; команда в CLAUDE.md, 1 кредит, один раз), наличие `env_with_keys.txt`. Скопировать его в `.env`, создать `.gitignore` (`.env`, `env_with_keys.txt`, `node_modules`, `__pycache__`, `data/`), `git init` + первый коммит.
   **DoD:** SERP-провайдер (serper.dev) отвечает JSON'ом (или заказчику отправлен блокер); репозиторий инициализирован.
 
-- [ ] **T-1. Каркас и Docker Compose.**
+- [x] **T-1. Каркас и Docker Compose.**
   ТЗ: 4, 5, 19. Создать `backend/` (FastAPI, `/api/health`), `frontend/` (Vite + React, пустая оболочка с тёмной темой), `docker-compose.yml` (postgres `pgvector/pgvector:pg15`, redis:7, backend, worker-заглушка Celery, frontend; nginx под profile `production`), `env.example` без секретов.
   **DoD:** `docker compose up -d` поднимает всё; `GET /api/health` → 200; фронт открывается на :3000.
 
