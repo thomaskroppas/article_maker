@@ -12,7 +12,8 @@ from app.llm.prompt_loader import PROMPT_AGENTS, load_prompt, render_prompt
 ALL_VARS = {
     v: f"<{v}>"
     for v in [
-        "analysis_csv", "archetypes_list", "article_summary", "article_title",
+        "analysis_csv", "archetypes_list", "article_markdown", "suggested_sources",
+        "article_summary", "article_title",
         "article_type", "author_block", "brief_json", "brief_summary",
         "code_metrics_summary", "common_h2", "competitor_analysis_json",
         "competitor_analysis_summary", "competitor_summary", "competitor_titles",
@@ -29,8 +30,9 @@ ALL_VARS = {
 }
 
 
-def test_thirteen_prompt_agents():
-    assert len(PROMPT_AGENTS) == 13
+def test_prompt_agents_count():
+    # 13 существующих + sources_weaver + fact_checker (написаны в T-9)
+    assert len(PROMPT_AGENTS) == 15
 
 
 @pytest.mark.parametrize("agent", PROMPT_AGENTS)

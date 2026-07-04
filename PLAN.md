@@ -42,7 +42,7 @@
   ТЗ: 6.9–6.13, 7.3.5–7.3.7, раздел 8.2.5 (настройки картинок), FR-18 (дедуп FAQ). Цикл Writer→Critic→Editor (порог 60, флаг `enable_section_critic`), SUMMARY-маркеры, сборка markdown, image-агент (ключи + Pixabay/Unsplash с ротацией ключей при 429), FAQ с дедупликацией.
   **DoD:** на MockLLM собирается полный draft, структурно эквивалентный `reference_article/full_draft.json`; тест дедупа FAQ; тест ротации ключей картинок.
 
-- [ ] **T-9. Новые промпты + шаги 10–11 — sources_weaver, fact_checker.**
+- [x] **T-9. Новые промпты + шаги 10–11 — sources_weaver, fact_checker.**
   ТЗ: 3.13, 3.12, 7.3.9, 9 (fact-checking целиком), 20.5. Написать оба промпта по требованиям 20.2 (английский, Template, JSON-only), реализовать verification через Wikipedia/Wikidata с кэшем, проверку живости URL (HEAD, 5 сек).
   **DoD:** юнит-тесты: weaver не меняет текст вне ссылок (diff-проверка), ≤1 ссылка/секция; fact_checker извлекает 5–20 валидных FactStatement из `reference_article/article.md` (на моке); формат промптов проходит рендер T-4.
 

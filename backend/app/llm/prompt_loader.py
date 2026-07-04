@@ -16,12 +16,14 @@ from ..paths import prompts_dir
 PROMPT_VERSION = "v1"
 
 # Имя файла промпта по агенту. По умолчанию — v1.txt; image_keys_agent поставлен
-# как v1_reference_from_code.txt (референс, извлечённый из desktop-кода).
+# как v1_reference_from_code.txt (референс, извлечённый из desktop-кода);
+# fact_checker_agent — v1_extraction.txt (написан в T-9).
 _PROMPT_FILES: dict[str, str] = {
     "image_keys_agent": "v1_reference_from_code.txt",
+    "fact_checker_agent": "v1_extraction.txt",
 }
 
-# 13 агентов с готовыми промптами (ТЗ §20.1). sources_weaver/fact_checker — T-9.
+# Агенты с готовыми промптами (ТЗ §20.1 + новые sources_weaver/fact_checker, T-9).
 PROMPT_AGENTS: tuple[str, ...] = (
     "competitor_analysis_agent",
     "lsi_agent",
@@ -36,6 +38,8 @@ PROMPT_AGENTS: tuple[str, ...] = (
     "archetype_picker_agent",
     "style_extractor_agent",
     "image_keys_agent",
+    "sources_weaver_agent",
+    "fact_checker_agent",
 )
 
 

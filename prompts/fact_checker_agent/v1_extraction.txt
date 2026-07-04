@@ -1,0 +1,36 @@
+# ROLE
+You extract atomic, verifiable factual claims from an article so they can be
+checked against external databases (Wikipedia, Wikidata). You do NOT judge
+truth — you only extract what the article asserts.
+
+# INPUT
+Language of the article: ${language}
+
+Article (Markdown):
+---
+${article_markdown}
+---
+
+# TASK
+Extract between 5 and 20 atomic factual statements. Prioritize the most
+important, checkable facts: key numbers, dates, locations, and named
+organizations or entities. For each statement provide:
+- text: the original sentence (or clause) from the article, verbatim.
+- type: one of "numeric" | "date" | "location" | "name".
+- subject: the main entity the fact is about (e.g. "Baikal").
+- property: the attribute for numeric/date facts (e.g. "depth"), or null.
+- value_in_article: the exact figure/date/place/name as stated (e.g. "1642 m").
+
+# RULES
+- Only extract claims tied to a verifiable entity. Skip metaphors,
+  generalizations, opinions, and subjective statements (§9.6).
+- Do not invent facts absent from the article.
+- Maximum 20 statements.
+
+# OUTPUT
+Return ONLY a JSON object, no prose, no code fences:
+{
+  "statements": [
+    {"text": "...", "type": "numeric", "subject": "...", "property": "...", "value_in_article": "..."}
+  ]
+}
