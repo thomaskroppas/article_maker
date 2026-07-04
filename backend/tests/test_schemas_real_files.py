@@ -13,12 +13,11 @@ import os
 import pytest
 
 from app import schemas
+from app.paths import fixtures_dir, reference_dir
 
-REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)
-FIXTURES = os.path.join(REPO_ROOT, "fixtures")
-REF = os.path.join(REPO_ROOT, "reference_article")
+# Резолвер работает и локально, и в контейнере (каталоги смонтированы в /app).
+FIXTURES = str(fixtures_dir())
+REF = str(reference_dir())
 
 
 def _load(path: str):

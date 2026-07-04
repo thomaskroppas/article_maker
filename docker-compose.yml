@@ -47,6 +47,8 @@ services:
       - "8000:8000"
     volumes:
       - ./prompts:/app/prompts:ro
+      - ./fixtures:/app/fixtures:ro                 # dev/тесты: MockLLMClient + схемы
+      - ./reference_article:/app/reference_article:ro  # dev/тесты
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
@@ -64,6 +66,8 @@ services:
       <<: *backend-env
     volumes:
       - ./prompts:/app/prompts:ro
+      - ./fixtures:/app/fixtures:ro                 # dev/тесты: MockLLMClient + схемы
+      - ./reference_article:/app/reference_article:ro  # dev/тесты
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
